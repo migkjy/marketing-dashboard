@@ -7,10 +7,12 @@ interface SiteSelectorProps {
 
 const SITES = [
   { label: "All Sites", value: "all" },
-  { label: "richbukae", value: "richbukae" },
   { label: "ai-architect", value: "ai-architect" },
+  { label: "aihubkorea", value: "aihubkorea" },
+  { label: "richbukae", value: "richbukae" },
   { label: "koreaai-hub", value: "koreaai-hub" },
-  { label: "apppro", value: "apppro" },
+  { label: "deafnuri", value: "deafnuri" },
+  { label: "newbizsoft", value: "newbizsoft" },
 ];
 
 export function SiteSelector({ value, onChange }: SiteSelectorProps) {

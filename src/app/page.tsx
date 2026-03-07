@@ -10,6 +10,10 @@ import { SiteSelector } from "@/components/dashboard/site-selector";
 import { SubscriberKpi } from "@/components/dashboard/subscriber-kpi";
 import { SubscriberTrendChart } from "@/components/dashboard/subscriber-trend-chart";
 import { CampaignTable } from "@/components/dashboard/campaign-table";
+import { TrafficKpi } from "@/components/dashboard/traffic-kpi";
+import { TrafficTrendChart } from "@/components/dashboard/traffic-trend-chart";
+import { CountryDistribution } from "@/components/dashboard/country-distribution";
+import { SiteTrafficTable } from "@/components/dashboard/site-traffic-table";
 
 interface MetricsData {
   kpi: {
@@ -70,7 +74,15 @@ interface CampaignData {
   totalCampaigns: number;
 }
 
-type Tab = "subscribers" | "crm";
+interface InfraData {
+  totals: { requests: number; visitors: number; bytes: number };
+  dailyTrend: { date: string; requests: number; visitors: number; bytes: number }[];
+  countryDistribution: { country: string; requests: number }[];
+  sites: { site: string; requests: number; visitors: number; bandwidth: number }[];
+  days: number;
+}
+
+type Tab = "subscribers" | "crm" | "infrastructure";
 
 export default function DashboardPage() {
   const [tab, setTab] = useState<Tab>("subscribers");
@@ -88,6 +100,11 @@ export default function DashboardPage() {
   const [campaignData, setCampaignData] = useState<CampaignData | null>(null);
   const [brevoLoading, setBrevoLoading] = useState(true);
   const [brevoError, setBrevoError] = useState<string | null>(null);
+
+  // Infrastructure data
+  const [infraData, setInfraData] = useState<InfraData | null>(null);
+  const [infraLoading, setInfraLoading] = useState(false);
+  const [infraError, setInfraError] = useState<string | null>(null);
 
   // Fetch CRM data
   useEffect(() => {
@@ -136,6 +153,30 @@ export default function DashboardPage() {
     fetchBrevo(days);
   }, [days, fetchBrevo]);
 
+  // Fetch Infrastructure data
+  const fetchInfra = useCallback(async (d: number, s: string) => {
+    setInfraLoading(true);
+    setInfraError(null);
+    try {
+      const res = await fetch(`/api/infrastructure?days=${d}&site=${s}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to fetch infrastructure data");
+      }
+      setInfraData(await res.json());
+    } catch (err) {
+      setInfraError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setInfraLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "infrastructure") {
+      fetchInfra(days, site);
+    }
+  }, [tab, days, site, fetchInfra]);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -176,6 +217,16 @@ export default function DashboardPage() {
               }`}
             >
               CRM & Content
+            </button>
+            <button
+              onClick={() => setTab("infrastructure")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                tab === "infrastructure"
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Infrastructure
             </button>
           </div>
         </div>
@@ -222,6 +273,29 @@ export default function DashboardPage() {
                   <PipelineSummary data={crmData.dealPipeline} />
                 </div>
                 <RecentPosts data={crmData.recentPosts} />
+              </>
+            ) : null}
+          </>
+        )}
+
+        {tab === "infrastructure" && (
+          <>
+            {infraLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-muted-foreground">Loading traffic data...</div>
+              </div>
+            ) : infraError ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-destructive">Error: {infraError}</div>
+              </div>
+            ) : infraData ? (
+              <>
+                <TrafficKpi totals={infraData.totals} days={infraData.days} />
+                <TrafficTrendChart data={infraData.dailyTrend} days={infraData.days} />
+                <div className="grid gap-6 md:grid-cols-2">
+                  <CountryDistribution data={infraData.countryDistribution} />
+                  <SiteTrafficTable data={infraData.sites} />
+                </div>
               </>
             ) : null}
           </>
