@@ -23,6 +23,10 @@ import { TrafficKpi } from "@/components/dashboard/traffic-kpi";
 import { TrafficTrendChart } from "@/components/dashboard/traffic-trend-chart";
 import { CountryDistribution } from "@/components/dashboard/country-distribution";
 import { SiteTrafficTable } from "@/components/dashboard/site-traffic-table";
+import { GA4Kpi, GA4KpiSkeleton } from "@/components/dashboard/ga4-kpi";
+import { GA4TrendChart } from "@/components/dashboard/ga4-trend-chart";
+import { GA4TopPages } from "@/components/dashboard/ga4-top-pages";
+import { GA4SiteTable } from "@/components/dashboard/ga4-site-table";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface MetricsData {
@@ -92,7 +96,40 @@ interface InfraData {
   days: number;
 }
 
-type Tab = "subscribers" | "crm" | "infrastructure";
+interface GA4Data {
+  totals: {
+    activeUsers: number;
+    sessions: number;
+    screenPageViews: number;
+    engagementRate: number;
+    averageSessionDuration: number;
+    conversions: number;
+  };
+  dailyTrend: { date: string; activeUsers: number; sessions: number; screenPageViews: number }[];
+  topPages: { pagePath: string; screenPageViews: number; activeUsers: number }[];
+  sourceDistribution: { sessionSource: string; sessions: number; activeUsers: number }[];
+  sites: {
+    site: string;
+    propertyId: string;
+    totals: {
+      activeUsers: number;
+      sessions: number;
+      screenPageViews: number;
+      engagementRate: number;
+      averageSessionDuration: number;
+      conversions: number;
+    };
+    error?: string;
+  }[];
+  days: number;
+  propertyIds: Record<string, string>;
+  // error response fields
+  error?: string;
+  setupRequired?: boolean;
+  setupGuide?: string[];
+}
+
+type Tab = "subscribers" | "crm" | "infrastructure" | "ga4";
 
 function ErrorBanner({
   message,
@@ -184,6 +221,12 @@ export default function DashboardPage() {
   const [infraLoading, setInfraLoading] = useState(false);
   const [infraError, setInfraError] = useState<string | null>(null);
 
+  // GA4 data
+  const [ga4Data, setGa4Data] = useState<GA4Data | null>(null);
+  const [ga4Loading, setGa4Loading] = useState(false);
+  const [ga4Error, setGa4Error] = useState<string | null>(null);
+  const [ga4SetupGuide, setGa4SetupGuide] = useState<string[] | null>(null);
+
   // Fetch CRM data
   const fetchCrm = useCallback(() => {
     setCrmLoading(true);
@@ -261,10 +304,37 @@ export default function DashboardPage() {
     }
   }, [tab, days, site, fetchInfra]);
 
+  // Fetch GA4 data
+  const fetchGA4 = useCallback(async (d: number, s: string) => {
+    setGa4Loading(true);
+    setGa4Error(null);
+    setGa4SetupGuide(null);
+    try {
+      const res = await fetch(`/api/ga4?days=${d}&site=${s}`);
+      const body = await res.json();
+      if (!res.ok) {
+        if (body.setupGuide) setGa4SetupGuide(body.setupGuide);
+        throw new Error(body.error || "GA4 데이터를 불러오지 못했습니다");
+      }
+      setGa4Data(body);
+    } catch (err) {
+      setGa4Error(err instanceof Error ? err.message : "알 수 없는 오류");
+    } finally {
+      setGa4Loading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "ga4") {
+      fetchGA4(days, site);
+    }
+  }, [tab, days, site, fetchGA4]);
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "subscribers", label: "Subscribers" },
     { id: "crm", label: "CRM & Content" },
     { id: "infrastructure", label: "Infrastructure" },
+    { id: "ga4", label: "GA4 Analytics" },
   ];
 
   return (
@@ -367,6 +437,52 @@ export default function DashboardPage() {
                   <CountryDistribution data={infraData.countryDistribution} />
                   <SiteTrafficTable data={infraData.sites} />
                 </div>
+              </>
+            ) : null}
+          </>
+        )}
+
+        {tab === "ga4" && (
+          <>
+            {ga4Loading ? (
+              <div className="space-y-6">
+                <GA4KpiSkeleton />
+                <div className="border rounded-xl h-72 bg-muted animate-pulse" />
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="border rounded-xl h-64 bg-muted animate-pulse" />
+                  <div className="border rounded-xl h-64 bg-muted animate-pulse" />
+                </div>
+              </div>
+            ) : ga4Error ? (
+              <div className="space-y-4">
+                <ErrorBanner
+                  message={ga4Error}
+                  onRetry={() => fetchGA4(days, site)}
+                />
+                {ga4SetupGuide && (
+                  <div className="border rounded-xl p-5 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                    <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-3 text-sm">
+                      GA4 설정 필요 — 아래 단계를 완료해주세요
+                    </h3>
+                    <ol className="space-y-2">
+                      {ga4SetupGuide.map((step, i) => (
+                        <li key={i} className="text-sm text-amber-700 dark:text-amber-400">
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            ) : ga4Data ? (
+              <>
+                <GA4Kpi totals={ga4Data.totals} days={ga4Data.days} />
+                <GA4TrendChart data={ga4Data.dailyTrend} days={ga4Data.days} />
+                <GA4TopPages
+                  topPages={ga4Data.topPages}
+                  sourceDistribution={ga4Data.sourceDistribution}
+                />
+                <GA4SiteTable sites={ga4Data.sites} />
               </>
             ) : null}
           </>
