@@ -7,13 +7,23 @@ import { PipelineSummary } from "@/components/dashboard/pipeline-summary";
 import { RecentPosts } from "@/components/dashboard/recent-posts";
 import { DateRangeFilter } from "@/components/dashboard/date-range-filter";
 import { SiteSelector } from "@/components/dashboard/site-selector";
-import { SubscriberKpi } from "@/components/dashboard/subscriber-kpi";
-import { SubscriberTrendChart } from "@/components/dashboard/subscriber-trend-chart";
-import { CampaignTable } from "@/components/dashboard/campaign-table";
+import {
+  SubscriberKpi,
+  SubscriberKpiSkeleton,
+} from "@/components/dashboard/subscriber-kpi";
+import {
+  SubscriberTrendChart,
+  SubscriberTrendChartSkeleton,
+} from "@/components/dashboard/subscriber-trend-chart";
+import {
+  CampaignTable,
+  CampaignTableSkeleton,
+} from "@/components/dashboard/campaign-table";
 import { TrafficKpi } from "@/components/dashboard/traffic-kpi";
 import { TrafficTrendChart } from "@/components/dashboard/traffic-trend-chart";
 import { CountryDistribution } from "@/components/dashboard/country-distribution";
 import { SiteTrafficTable } from "@/components/dashboard/site-traffic-table";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface MetricsData {
   kpi: {
@@ -84,6 +94,74 @@ interface InfraData {
 
 type Tab = "subscribers" | "crm" | "infrastructure";
 
+function ErrorBanner({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 gap-3">
+      <div className="flex items-center gap-2 text-destructive">
+        <AlertCircle className="h-5 w-5" />
+        <span className="text-sm font-medium">데이터를 불러오지 못했습니다</span>
+      </div>
+      <p className="text-xs text-muted-foreground max-w-xs text-center">{message}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+        >
+          <RefreshCw className="h-3 w-3" />
+          다시 시도
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CrmSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="border rounded-xl p-4 space-y-3">
+            <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+            <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+            <div className="h-3 w-16 bg-muted animate-pulse rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="border rounded-xl h-64 bg-muted animate-pulse" />
+        <div className="border rounded-xl h-64 bg-muted animate-pulse" />
+      </div>
+      <div className="border rounded-xl h-48 bg-muted animate-pulse" />
+    </div>
+  );
+}
+
+function InfraSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="border rounded-xl p-4 space-y-3">
+            <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+            <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="border rounded-xl h-72 bg-muted animate-pulse" />
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="border rounded-xl h-48 bg-muted animate-pulse" />
+        <div className="border rounded-xl h-48 bg-muted animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [tab, setTab] = useState<Tab>("subscribers");
   const [days, setDays] = useState(30);
@@ -107,7 +185,9 @@ export default function DashboardPage() {
   const [infraError, setInfraError] = useState<string | null>(null);
 
   // Fetch CRM data
-  useEffect(() => {
+  const fetchCrm = useCallback(() => {
+    setCrmLoading(true);
+    setCrmError(null);
     fetch("/api/metrics")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch CRM metrics");
@@ -117,6 +197,10 @@ export default function DashboardPage() {
       .catch((err) => setCrmError(err.message))
       .finally(() => setCrmLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchCrm();
+  }, [fetchCrm]);
 
   // Fetch Brevo data
   const fetchBrevo = useCallback(async (d: number) => {
@@ -130,7 +214,7 @@ export default function DashboardPage() {
       ]);
 
       if (!subRes.ok || !trendRes.ok || !campRes.ok) {
-        throw new Error("Failed to fetch Brevo data");
+        throw new Error("Brevo API 응답 오류. API 키를 확인해주세요.");
       }
 
       const [sub, trend, camp] = await Promise.all([
@@ -143,7 +227,7 @@ export default function DashboardPage() {
       setTrendData(trend);
       setCampaignData(camp);
     } catch (err) {
-      setBrevoError(err instanceof Error ? err.message : "Unknown error");
+      setBrevoError(err instanceof Error ? err.message : "알 수 없는 오류");
     } finally {
       setBrevoLoading(false);
     }
@@ -161,11 +245,11 @@ export default function DashboardPage() {
       const res = await fetch(`/api/infrastructure?days=${d}&site=${s}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Failed to fetch infrastructure data");
+        throw new Error(body.error || "인프라 데이터를 불러오지 못했습니다");
       }
       setInfraData(await res.json());
     } catch (err) {
-      setInfraError(err instanceof Error ? err.message : "Unknown error");
+      setInfraError(err instanceof Error ? err.message : "알 수 없는 오류");
     } finally {
       setInfraLoading(false);
     }
@@ -177,57 +261,46 @@ export default function DashboardPage() {
     }
   }, [tab, days, site, fetchInfra]);
 
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "subscribers", label: "Subscribers" },
+    { id: "crm", label: "CRM & Content" },
+    { id: "infrastructure", label: "Infrastructure" },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
+      <header className="border-b sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="container mx-auto px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight truncate">
                 Marketing Dashboard
               </h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block mt-0.5">
                 Subscribers, CRM & content metrics
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
               <SiteSelector value={site} onChange={setSite} />
               <DateRangeFilter value={days} onChange={setDays} />
             </div>
           </div>
 
           {/* Tab Navigation */}
-          <div className="flex gap-1 mt-4 border-b -mb-px">
-            <button
-              onClick={() => setTab("subscribers")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === "subscribers"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Subscribers
-            </button>
-            <button
-              onClick={() => setTab("crm")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === "crm"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              CRM & Content
-            </button>
-            <button
-              onClick={() => setTab("infrastructure")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === "infrastructure"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Infrastructure
-            </button>
+          <div className="flex gap-0 mt-3 border-b -mb-px overflow-x-auto">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  tab === t.id
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
         </div>
       </header>
@@ -236,13 +309,16 @@ export default function DashboardPage() {
         {tab === "subscribers" && (
           <>
             {brevoLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-muted-foreground">Loading Brevo data...</div>
-              </div>
+              <>
+                <SubscriberKpiSkeleton />
+                <SubscriberTrendChartSkeleton />
+                <CampaignTableSkeleton />
+              </>
             ) : brevoError ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-destructive">Error: {brevoError}</div>
-              </div>
+              <ErrorBanner
+                message={brevoError}
+                onRetry={() => fetchBrevo(days)}
+              />
             ) : (
               <>
                 {subData && <SubscriberKpi data={subData} />}
@@ -258,13 +334,9 @@ export default function DashboardPage() {
         {tab === "crm" && (
           <>
             {crmLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-muted-foreground">Loading CRM data...</div>
-              </div>
+              <CrmSkeleton />
             ) : crmError ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-destructive">Error: {crmError}</div>
-              </div>
+              <ErrorBanner message={crmError} onRetry={fetchCrm} />
             ) : crmData ? (
               <>
                 <KpiCards data={crmData.kpi} />
@@ -281,13 +353,12 @@ export default function DashboardPage() {
         {tab === "infrastructure" && (
           <>
             {infraLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-muted-foreground">Loading traffic data...</div>
-              </div>
+              <InfraSkeleton />
             ) : infraError ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-destructive">Error: {infraError}</div>
-              </div>
+              <ErrorBanner
+                message={infraError}
+                onRetry={() => fetchInfra(days, site)}
+              />
             ) : infraData ? (
               <>
                 <TrafficKpi totals={infraData.totals} days={infraData.days} />
